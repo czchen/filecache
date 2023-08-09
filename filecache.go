@@ -12,7 +12,9 @@ import (
 )
 
 type FileCache struct {
-	opts        options
+	timeToLive      time.Duration
+	expirationCycle time.Duration
+
 	workdir     string
 	stopCleaner chan struct{}
 
@@ -29,21 +31,22 @@ type item struct {
 }
 
 // Create a new FileCache.
-func New(opts ...Option) (*FileCache, error) {
+func New(opts ...func(*FileCache)) (*FileCache, error) {
 	workdir, err := os.MkdirTemp("", "filecache-*")
 	if err != nil {
 		return nil, err
 	}
 
 	fc := &FileCache{
-		workdir:     workdir,
-		stopCleaner: make(chan struct{}),
-		cache:       make(map[string]item),
+		timeToLive:      1 * time.Hour,
+		expirationCycle: 10 * time.Minute,
+		workdir:         workdir,
+		stopCleaner:     make(chan struct{}),
+		cache:           make(map[string]item),
 	}
 
-	fc.opts = getDefaultOptions()
 	for _, opt := range opts {
-		opt(&fc.opts)
+		opt(fc)
 	}
 
 	return fc, nil
@@ -86,7 +89,7 @@ func (fc *FileCache) Get(key string, value io.Writer) error {
 		return ErrNotFound
 	}
 
-	item.expiredAt = time.Now().Add(fc.opts.timeToLive)
+	item.expiredAt = time.Now().Add(fc.timeToLive)
 
 	item.file.Seek(0, io.SeekStart)
 	_, err := io.Copy(value, item.file)
@@ -105,7 +108,7 @@ func (fc *FileCache) Put(key string, value io.Reader) error {
 	}
 
 	i := item{
-		expiredAt: time.Now().Add(fc.opts.timeToLive),
+		expiredAt: time.Now().Add(fc.timeToLive),
 		file:      f,
 	}
 
@@ -122,7 +125,7 @@ func (fc *FileCache) Put(key string, value io.Reader) error {
 }
 
 func (fc *FileCache) runCleaner() {
-	ticker := time.NewTicker(fc.opts.cleanerInterval)
+	ticker := time.NewTicker(fc.expirationCycle)
 	defer ticker.Stop()
 
 	select {
@@ -153,4 +156,18 @@ func (fc *FileCache) cleanExpiredKey() {
 		}
 	}
 	fc.lock.Unlock()
+}
+
+// Setup time-to-live.
+func WithTTL(ttl time.Duration) func(*FileCache) {
+	return func(fc *FileCache) {
+		fc.timeToLive = ttl
+	}
+}
+
+// Setup expiration cycle.
+func WithExpirationCycle(expirationCycle time.Duration) func(*FileCache) {
+	return func(fc *FileCache) {
+		fc.expirationCycle = expirationCycle
+	}
 }
