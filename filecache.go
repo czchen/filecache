@@ -1,3 +1,6 @@
+/*
+The filecache package provides a simple file based cache with TTL (time-to-live) supported.
+*/
 package filecache
 
 import (
@@ -17,6 +20,7 @@ type FileCache struct {
 	lock  sync.RWMutex
 }
 
+// Cannot find cache for the key.
 var ErrNotFound = fmt.Errorf("not found")
 
 type item struct {
@@ -24,6 +28,7 @@ type item struct {
 	file      *os.File
 }
 
+// Create a new FileCache.
 func New(opts ...Option) (*FileCache, error) {
 	workdir, err := os.MkdirTemp("", "filecache-*")
 	if err != nil {
@@ -44,10 +49,13 @@ func New(opts ...Option) (*FileCache, error) {
 	return fc, nil
 }
 
+// Start this FileCache. This will start a cleaner goroutine to clean expired key periodically. User needs to call
+// Stop afterward.
 func (fc *FileCache) Start() {
 	go fc.runCleaner()
 }
 
+// Stop this FileCache. Once this function is called, no further functions shall be called.
 func (fc *FileCache) Stop() {
 	fc.stopCleaner <- struct{}{}
 
@@ -60,6 +68,7 @@ func (fc *FileCache) Stop() {
 	os.RemoveAll(fc.workdir)
 }
 
+// Get the value for the given key. ErrNotFound will be returned if the key is not found.
 func (fc *FileCache) Get(key string) ([]byte, error) {
 	fc.lock.RLock()
 	item, ok := fc.cache[key]
@@ -93,6 +102,7 @@ func (fc *FileCache) Get(key string) ([]byte, error) {
 	return buf, nil
 }
 
+// Put the value for the given key.
 func (fc *FileCache) Put(key string, value []byte) error {
 	f, err := os.CreateTemp(fc.workdir, "cache-*")
 	if err != nil {
