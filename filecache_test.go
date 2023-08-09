@@ -18,18 +18,19 @@ func TestGetFound(t *testing.T) {
 	fc.Start()
 	defer fc.Stop()
 
-	err = fc.Put(key, value)
+	err = fc.Put(key, bytes.NewReader(value))
 	if err != nil {
 		t.Error("cannot put key")
 	}
 
-	res, err := fc.Get(key)
+	buffer := bytes.Buffer{}
+	err = fc.Get(key, &buffer)
 	if err != nil {
 		t.Error("cannot get key")
 	}
 
-	if !bytes.Equal(res, value) {
-		t.Errorf("result is wrong, %+v != %+v", res, value)
+	if !bytes.Equal(buffer.Bytes(), value) {
+		t.Errorf("result is wrong, %+v != %+v", buffer.Bytes(), value)
 	}
 }
 
@@ -44,7 +45,8 @@ func TestGetNotFound(t *testing.T) {
 
 	key := "key"
 
-	_, err = fc.Get(key)
+	buffer := bytes.Buffer{}
+	err = fc.Get(key, &buffer)
 	if err != ErrNotFound {
 		t.Error("key shall not be found")
 	}
@@ -62,12 +64,13 @@ func TestGetExpiredKey(t *testing.T) {
 	fc.Start()
 	defer fc.Stop()
 
-	err = fc.Put(key, value)
+	err = fc.Put(key, bytes.NewReader(value))
 	if err != nil {
 		t.Error("cannot put key")
 	}
 
-	_, err = fc.Get(key)
+	buffer := bytes.Buffer{}
+	err = fc.Get(key, &buffer)
 	if err == nil {
 		t.Error("shall not get key")
 	}
@@ -85,7 +88,7 @@ func TestCleanExpiredKey(t *testing.T) {
 	fc.Start()
 	defer fc.Stop()
 
-	err = fc.Put(key, value)
+	err = fc.Put(key, bytes.NewReader(value))
 	if err != nil {
 		t.Error("cannot put key")
 	}

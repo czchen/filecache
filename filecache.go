@@ -69,13 +69,13 @@ func (fc *FileCache) Stop() {
 }
 
 // Get the value for the given key. ErrNotFound will be returned if the key is not found.
-func (fc *FileCache) Get(key string) ([]byte, error) {
+func (fc *FileCache) Get(key string, value io.Writer) error {
 	fc.lock.RLock()
 	item, ok := fc.cache[key]
 	fc.lock.RUnlock()
 
 	if !ok {
-		return []byte{}, ErrNotFound
+		return ErrNotFound
 	}
 
 	fc.lock.Lock()
@@ -83,27 +83,22 @@ func (fc *FileCache) Get(key string) ([]byte, error) {
 
 	if time.Now().After(item.expiredAt) {
 		delete(fc.cache, key)
-		return []byte{}, ErrNotFound
+		return ErrNotFound
 	}
 
 	item.expiredAt = time.Now().Add(fc.opts.timeToLive)
 
-	size, err := item.file.Seek(0, io.SeekEnd)
+	item.file.Seek(0, io.SeekStart)
+	_, err := io.Copy(value, item.file)
 	if err != nil {
-		return []byte{}, err
+		return err
 	}
 
-	buf := make([]byte, size)
-	_, err = item.file.ReadAt(buf, 0)
-	if err != nil {
-		return []byte{}, err
-	}
-
-	return buf, nil
+	return nil
 }
 
 // Put the value for the given key.
-func (fc *FileCache) Put(key string, value []byte) error {
+func (fc *FileCache) Put(key string, value io.Reader) error {
 	f, err := os.CreateTemp(fc.workdir, "cache-*")
 	if err != nil {
 		return err
@@ -114,7 +109,7 @@ func (fc *FileCache) Put(key string, value []byte) error {
 		file:      f,
 	}
 
-	_, err = i.file.Write(value)
+	_, err = io.Copy(i.file, value)
 	if err != nil {
 		return err
 	}
